@@ -23,6 +23,8 @@ from models.actor_critic import ActorCritic
 from models.world_model import WorldModel
 from utils import configure_optimizer, EpisodeDirManager, set_seed
 
+import pdb
+
 
 class Trainer:
     def __init__(self, cfg: DictConfig) -> None:
@@ -62,6 +64,7 @@ class Trainer:
         episode_manager_test = EpisodeDirManager(self.episode_dir / 'test', max_num_episodes=cfg.collection.test.num_episodes_to_save)
         self.episode_manager_imagination = EpisodeDirManager(self.episode_dir / 'imagination', max_num_episodes=cfg.evaluation.actor_critic.num_episodes_to_save)
 
+        # 这里创建环境可能和MARL不兼容！注意！
         def create_env(cfg_env, num_envs):
             env_fn = partial(instantiate, config=cfg_env)
             return MultiProcessEnv(env_fn, num_envs, should_wait_num_envs_ratio=1.0) if num_envs > 1 else SingleProcessEnv(env_fn)
@@ -79,6 +82,7 @@ class Trainer:
         assert self.cfg.training.should or self.cfg.evaluation.should
         env = train_env if self.cfg.training.should else test_env
 
+        # 创建模型
         tokenizer = instantiate(cfg.tokenizer)
         world_model = WorldModel(obs_vocab_size=tokenizer.vocab_size, act_vocab_size=env.num_actions, config=instantiate(cfg.world_model))
         actor_critic = ActorCritic(**cfg.actor_critic, act_vocab_size=env.num_actions)
@@ -134,7 +138,9 @@ class Trainer:
         cfg_world_model = self.cfg.training.world_model
         cfg_actor_critic = self.cfg.training.actor_critic
 
+        # 大于指定的epoch后才开始训练tokenizer，下面同理
         if epoch > cfg_tokenizer.start_after_epochs:
+            # tokenizer训练的sequence length为1，也就是T = 1
             metrics_tokenizer = self.train_component(self.agent.tokenizer, self.optimizer_tokenizer, sequence_length=1, sample_from_start=True, **cfg_tokenizer)
         self.agent.tokenizer.eval()
 
@@ -155,7 +161,7 @@ class Trainer:
         for _ in tqdm(range(steps_per_epoch), desc=f"Training {str(component)}", file=sys.stdout):
             optimizer.zero_grad()
             for _ in range(grad_acc_steps):
-                batch = self.train_dataset.sample_batch(batch_num_samples, sequence_length, sample_from_start)
+                batch = self.train_dataset.sample_batch(batch_num_samples, sequence_length, sample_from_start) # dim: N x L x ...(e.g., obs dim)
                 batch = self._to_device(batch)
 
                 losses = component.compute_loss(batch, **kwargs_loss) / grad_acc_steps
@@ -191,7 +197,7 @@ class Trainer:
             metrics_world_model = self.eval_component(self.agent.world_model, cfg_world_model.batch_num_samples, sequence_length=self.cfg.common.sequence_length, tokenizer=self.agent.tokenizer)
 
         if epoch > cfg_actor_critic.start_after_epochs:
-            self.inspect_imagination(epoch)
+            self.inspect_imagination(epoch) # 检查world model的imagination
 
         if cfg_tokenizer.save_reconstructions:
             batch = self._to_device(self.test_dataset.sample_batch(batch_num_samples=3, sequence_length=self.cfg.common.sequence_length))

@@ -17,7 +17,7 @@ class Episode:
     actions: torch.LongTensor
     rewards: torch.FloatTensor
     ends: torch.LongTensor
-    mask_padding: torch.BoolTensor
+    mask_padding: torch.BoolTensor # True表示对应时刻是轨迹有效的，False表示轨迹已经结束，是padding上去的
 
     def __post_init__(self):
         assert len(self.observations) == len(self.actions) == len(self.rewards) == len(self.ends) == len(self.mask_padding)
@@ -41,6 +41,7 @@ class Episode:
             torch.cat((self.mask_padding, other.mask_padding), dim=0),
         )
 
+    # 切割轨迹片段，当轨迹长度不足
     def segment(self, start: int, stop: int, should_pad: bool = False) -> Episode:
         assert start < len(self) and stop > 0 and start < stop
         padding_length_right = max(0, stop - len(self))
@@ -48,7 +49,9 @@ class Episode:
         assert padding_length_right == padding_length_left == 0 or should_pad
 
         def pad(x):
+            # pad_right 将x的last维度往后pad padding_length_right个长度，value 默认为None
             pad_right = torch.nn.functional.pad(x, [0 for _ in range(2 * x.ndim - 1)] + [padding_length_right]) if padding_length_right > 0 else x
+            # return这一行 将x的last维度向前pad padding_length_left个长度，value 默认为None
             return torch.nn.functional.pad(pad_right, [0 for _ in range(2 * x.ndim - 2)] + [padding_length_left, 0]) if padding_length_left > 0 else pad_right
 
         start = max(0, start)

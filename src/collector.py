@@ -21,7 +21,7 @@ class Collector:
         self.dataset = dataset
         self.episode_dir_manager = episode_dir_manager
         self.obs = self.env.reset()
-        self.episode_ids = [None] * self.env.num_envs
+        self.episode_ids = [None] * self.env.num_envs # 用来记录每个创建的env当前采集的episode id
         self.heuristic = RandomHeuristic(self.env.num_actions)
 
     @torch.no_grad()
@@ -52,8 +52,11 @@ class Collector:
 
             observations.append(self.obs)
             obs = rearrange(torch.FloatTensor(self.obs).div(255), 'n h w c -> n c h w').to(agent.device)
+
+            # 通过agent内部模型预测得到的动作，should_sample表示是否从采样获得动作，还是确定性argmax选择动作
             act = agent.act(obs, should_sample=should_sample, temperature=temperature).cpu().numpy()
 
+            # 以epsilon的概率选择随机动作
             if random.random() < epsilon:
                 act = self.heuristic.act(obs).cpu().numpy()
 
@@ -63,7 +66,9 @@ class Collector:
             rewards.append(reward)
             dones.append(done)
 
-            new_steps = len(self.env.mask_new_dones)
+            new_steps = len(self.env.mask_new_dones) # 根据done_tracker中mask_new_dons的内容可知done<=1会被拿出来
+            # 即未完成和刚完成的环境，会被算入到new_steps中
+
             steps += new_steps
             pbar.update(new_steps if num_steps is not None else 0)
 
@@ -113,7 +118,7 @@ class Collector:
         assert len(observations) == len(actions) == len(rewards) == len(dones)
         for i, (o, a, r, d) in enumerate(zip(*map(lambda arr: np.swapaxes(arr, 0, 1), [observations, actions, rewards, dones]))):  # Make everything (N, T, ...) instead of (T, N, ...)
             episode = Episode(
-                observations=torch.ByteTensor(o).permute(0, 3, 1, 2).contiguous(),  # channel-first
+                observations=torch.ByteTensor(o).permute(0, 3, 1, 2).contiguous(),  # channel-first, Timesteps, C, H, W
                 actions=torch.LongTensor(a),
                 rewards=torch.FloatTensor(r),
                 ends=torch.LongTensor(d),

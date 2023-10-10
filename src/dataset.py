@@ -42,10 +42,11 @@ class EpisodesDataset:
     def update_episode(self, episode_id: int, new_episode: Episode) -> None:
         assert episode_id in self.episode_id_to_queue_idx
         queue_idx = self.episode_id_to_queue_idx[episode_id]
-        merged_episode = self.episodes[queue_idx].merge(new_episode)
+        merged_episode = self.episodes[queue_idx].merge(new_episode) # merge是将新老episode在dim 0进行concat
         self.episodes[queue_idx] = merged_episode
         self.newly_modified_episodes.add(episode_id)
 
+    # 从队头取出episode
     def _popleft(self) -> Episode:
         id_to_delete = [k for k, v in self.episode_id_to_queue_idx.items() if v == 0]
         assert len(id_to_delete) == 1
@@ -56,7 +57,7 @@ class EpisodesDataset:
     def _append_new_episode(self, episode):
         episode_id = self.num_seen_episodes
         self.episode_id_to_queue_idx[episode_id] = len(self.episodes)
-        self.episodes.append(episode)
+        self.episodes.append(episode) # 队尾存入episode
         self.num_seen_episodes += 1
         self.newly_modified_episodes.add(episode_id)
         return episode_id
@@ -82,8 +83,8 @@ class EpisodesDataset:
         episodes_segments = [e_s.__dict__ for e_s in episodes_segments]
         batch = {}
         for k in episodes_segments[0]:
-            batch[k] = torch.stack([e_s[k] for e_s in episodes_segments])
-        batch['observations'] = batch['observations'].float() / 255.0  # int8 to float and scale
+            batch[k] = torch.stack([e_s[k] for e_s in episodes_segments]) # 
+        batch['observations'] = batch['observations'].float() / 255.0  # int8 to float and scale to [0, 1]
         return batch
 
     def traverse(self, batch_num_samples: int, chunk_size: int):

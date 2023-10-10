@@ -21,6 +21,13 @@ class EncoderDecoderConfig:
     out_ch: int
     dropout: float
 
+@dataclass
+class StateEncoderConfig:
+    state_dim: int
+    hidden_size: int
+    max_ep_len: int
+    
+
 
 class Encoder(nn.Module):
     def __init__(self, config: EncoderDecoderConfig) -> None:
@@ -273,12 +280,14 @@ class ResnetBlock(nn.Module):
                                      padding=1)
         if self.in_channels != self.out_channels:
             if self.use_conv_shortcut:
+                # 这里是补了padding的保持自身
                 self.conv_shortcut = torch.nn.Conv2d(in_channels,
                                                      out_channels,
                                                      kernel_size=3,
                                                      stride=1,
                                                      padding=1)
             else:
+                # 这里是kernel为1卷积卷了自己保持不变
                 self.nin_shortcut = torch.nn.Conv2d(in_channels,
                                                     out_channels,
                                                     kernel_size=1,
@@ -360,3 +369,35 @@ class AttnBlock(nn.Module):
         h_ = self.proj_out(h_)
 
         return x + h_
+
+
+class DTEncoder(nn.Module):
+    def __init__(self, config: StateEncoderConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.hidden_size = config.hidden_size
+        
+        # embedding layer
+        self.embed_state = nn.Linear(config.state_dim, config.hidden_size)
+        # self.embed_timestep = nn.Embedding(config.max_ep_len, config.hidden_size)
+        self.embed_ln = nn.LayerNorm(config.hidden_size)
+        
+    def forward(self, x): # x: (B, T, N, Obs_dim)
+        state_embeddings = self.embed_state(x)
+        # time_embeddings = self.embed_timestep(timesteps)
+        # state_embeddings = state_embeddings + time_embeddings
+        
+        state_embeddings = self.embed_ln(state_embeddings)
+        return state_embeddings
+
+
+class DTDecoder(nn.Module):
+    def __init__(self, config: StateEncoderConfig) -> None:
+        super().__init__()
+        self.config = config
+        self.hidden_size = config.hidden_size
+        
+        self.predict_state = nn.Linear(config.hidden_size, config.state_dim)
+        
+    def forward(self, x): # x: (B, T, N, Embed_dim)
+        return self.predict_state(x)

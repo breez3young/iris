@@ -122,6 +122,9 @@ class ActorCritic(nn.Module):
 
     def imagine(self, batch: Batch, tokenizer: Tokenizer, world_model: WorldModel, horizon: int, show_pbar: bool = False) -> ImagineOutput:
         assert not self.use_original_obs
+        import pdb
+        pdb.set_trace()
+        
         initial_observations = batch['observations']
         mask_padding = batch['mask_padding']
         assert initial_observations.ndim == 5 and initial_observations.shape[2:] == (3, 64, 64)
